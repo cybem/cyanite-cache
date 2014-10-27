@@ -3,8 +3,8 @@
   (:require [clojure.string :as str]
             [clojure.core.cache :as cache]))
 
-(def ^const metric-wait-time 60)
-(def ^const cache-add-ttl 180)
+(def ^:const metric-wait-time 60)
+(def ^:const cache-add-ttl 180)
 
 (defprotocol StoreCache
   (push! [this tenant period rollup time path data ttl])
@@ -17,6 +17,10 @@
 (defn calc-delay
   [rollup add]
   (+ (int rollup) metric-wait-time add))
+
+(defn to-ms
+  [sec]
+  (* sec 1000))
 
 (defn set-tkeys!
   [mkeys tenant period rollup]
@@ -83,30 +87,32 @@
   [fn-agg fn-store]
   (let [caches (atom {})
         get-fns (atom {})
-        mkeys (atom {})]
-    (defn get-cache
-      [rollup]
-      (let [rollup (int rollup)]
-        (swap! caches
-               (fn [caches]
-                 (if (contains? caches rollup)
-                   caches
-                   (let [cache-ttl (* (calc-delay rollup cache-add-ttl) 1000)]
-                     (assoc caches rollup
-                            (cache/ttl-cache-factory {} :ttl cache-ttl)))))))
-      (get @caches rollup))
-    (defn create-fn-get
-      [cache]
-      (fn [key]))
-    (defn get-get-fn
-      [rollup]
-      (let [rollup (int rollup)]
-        (swap! get-fns
-               (fn [get-fns]
-                 (if (contains? get-fns rollup)
-                   get-fns
-                   (assoc get-fns rollup (create-fn-get (get-cache rollup)))))))
-      (get @get-fns rollup))
+        mkeys (atom {})
+        get-cache
+        (fn [rollup]
+          (let [rollup (int rollup)]
+            (swap! caches
+                   (fn [caches]
+                     (if (contains? caches rollup)
+                       caches
+                       (let [cache-ttl (to-ms (calc-delay rollup
+                                                          cache-add-ttl))]
+                         (assoc caches rollup (cache/ttl-cache-factory
+                                               {} :ttl cache-ttl)))))))
+          (get @caches rollup))
+        create-fn-get
+        (fn [cache]
+          (fn [key]))
+        get-get-fn
+        (fn [rollup]
+          (let [rollup (int rollup)]
+            (swap! get-fns
+                   (fn [get-fns]
+                     (if (contains? get-fns rollup)
+                       get-fns
+                       (assoc get-fns rollup
+                              (create-fn-get (get-cache rollup)))))))
+          (get @get-fns rollup))]
     (reify
       StoreCache
       (push! [this tenant period rollup time path data ttl]
