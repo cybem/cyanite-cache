@@ -4,7 +4,7 @@
             [clojure.core.cache :as cache]))
 
 (defprotocol StoreCache
-  (push! [this tenant period rollup time path data ttl])
+  (put! [this tenant period rollup time path data ttl])
   (flush! [this]))
 
 (def ^:const metric-wait-time 60)
@@ -102,12 +102,14 @@
                      caches
                      (let [cache-ttl (to-ms (calc-delay rollup
                                                         cache-add-ttl))]
-                       (assoc caches rollup (cache/ttl-cache-factory
-                                             {} :ttl cache-ttl))))))
+                       (assoc caches rollup
+                              (atom (cache/ttl-cache-factory
+                                     {} :ttl cache-ttl)))))))
           (get @caches rollup))
         create-fn-get
         (fn [cache]
-          (fn [key]))
+          (fn [key]
+            (get cache key)))
         get-get-fn!
         (fn [rollup]
           (let [rollup (int rollup)]
@@ -116,12 +118,14 @@
                      (if (contains? get-fns rollup)
                        get-fns
                        (assoc get-fns rollup
-                              (create-fn-get (get-cache! rollup)))))))
+                              (create-fn-get @(get-cache! rollup)))))))
           (get @get-fns rollup))]
     (reify
       StoreCache
-      (push! [this tenant period rollup time path data ttl]
+      (put! [this tenant period rollup time path data ttl]
         (set-keys! mkeys tenant period rollup time path ttl (get-get-fn! rollup)
                    fn-agg fn-store)
-        )
-      )))
+        (swap! (get-cache! rollup)
+               (fn [cache]
+                 (assoc cache key (conj (get cache key) data)))))
+      (flush! [this]))))
