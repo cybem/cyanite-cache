@@ -35,10 +35,12 @@
 
 (defn run-delayer!
   [rollup flusher]
-  (let [flush-delay (+ (int rollup) wait-time (rand-int 59))]
+  (let [flush-delay (+ (int rollup) wait-time (rand-int 59))
+        delayer (future (Thread/sleep (* flush-delay 1000)))]
     (future
-      (Thread/sleep (* flush-delay 1000))
-      (flusher))))
+      (deref delayer)
+      (flusher))
+    delayer))
 
 (defn get-pkeys!
   [mkeys tkeys tenant period rollup time ttl fn-data fn-agg fn-store]
@@ -49,12 +51,12 @@
              (let [pkeys (atom [])
                    flusher (create-flusher mkeys tkeys pkeys tenant period
                                            rollup time ttl fn-data fn-agg
-                                           fn-store)]
+                                           fn-store)
+                   delayer (run-delayer! rollup flusher)]
                (swap! pkeys
                       (fn [pkeys]
-                        (with-meta pkeys {:flusher flusher})))
-               (assoc! tkeys time pkeys)
-               (run-delayer! rollup flusher))))
+                        (with-meta pkeys {:flusher flusher :delayer delayer})))
+               (assoc! tkeys time pkeys))))
          time)
   (get @tkeys time))
 
