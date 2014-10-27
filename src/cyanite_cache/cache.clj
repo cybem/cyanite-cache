@@ -14,13 +14,17 @@
   [data]
   (/ (reduce + data) (count data)))
 
+(defn construct-key
+  [tenant period rollup time path]
+  (str/join "-" [tenant period rollup time path]))
+
 (defn construct-mkey
   [tenant period rollup]
   (str/join "-" [tenant period rollup]))
 
 (defn calc-delay
   [rollup add]
-  (+ (int rollup) metric-wait-time add))
+  (+ rollup metric-wait-time add))
 
 (defn to-ms
   [sec]
@@ -90,15 +94,14 @@
         mkeys (atom {})
         get-cache
         (fn [rollup]
-          (let [rollup (int rollup)]
-            (swap! caches
-                   (fn [caches]
-                     (if (contains? caches rollup)
-                       caches
-                       (let [cache-ttl (to-ms (calc-delay rollup
-                                                          cache-add-ttl))]
-                         (assoc caches rollup (cache/ttl-cache-factory
-                                               {} :ttl cache-ttl)))))))
+          (swap! caches
+                 (fn [caches]
+                   (if (contains? caches rollup)
+                     caches
+                     (let [cache-ttl (to-ms (calc-delay rollup
+                                                        cache-add-ttl))]
+                       (assoc caches rollup (cache/ttl-cache-factory
+                                             {} :ttl cache-ttl))))))
           (get @caches rollup))
         create-fn-get
         (fn [cache]
