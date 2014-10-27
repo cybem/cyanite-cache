@@ -82,18 +82,19 @@
   [mkeys tenant period rollup time path ttl fn-get fn-agg fn-store]
   (let [tkeys (set-tkeys! mkeys tenant period rollup)
         pkeys (set-pkeys! mkeys tkeys tenant period rollup time ttl fn-get
-                          fn-agg fn-store)
-        exists (contains? pkeys path)]
-    (when-not exists
-      (swap! pkeys conj path))
-    exists))
+                          fn-agg fn-store)]
+    (swap! pkeys
+           (fn [pkeys]
+             (if (contains? pkeys path)
+               pkeys
+               (conj pkeys path))))))
 
 (defn simple-cache
   [fn-agg fn-store]
   (let [caches (atom {})
         get-fns (atom {})
         mkeys (atom {})
-        get-cache
+        get-cache!
         (fn [rollup]
           (swap! caches
                  (fn [caches]
@@ -107,7 +108,7 @@
         create-fn-get
         (fn [cache]
           (fn [key]))
-        get-get-fn
+        get-get-fn!
         (fn [rollup]
           (let [rollup (int rollup)]
             (swap! get-fns
@@ -115,12 +116,12 @@
                      (if (contains? get-fns rollup)
                        get-fns
                        (assoc get-fns rollup
-                              (create-fn-get (get-cache rollup)))))))
+                              (create-fn-get (get-cache! rollup)))))))
           (get @get-fns rollup))]
     (reify
       StoreCache
       (push! [this tenant period rollup time path data ttl]
-        (set-keys! mkeys tenant period rollup time path ttl (get-get-fn rollup)
+        (set-keys! mkeys tenant period rollup time path ttl (get-get-fn! rollup)
                    fn-agg fn-store)
         )
       )))
