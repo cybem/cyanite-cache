@@ -17,11 +17,10 @@
   [mkeys tenant period rollup]
   (let [mkey (construct-mkey tenant period rollup)]
     (swap! mkeys
-           (fn [mkeys mkey]
+           (fn [mkeys]
              (if (contains? mkeys mkey)
                mkeys
-               (assoc mkeys mkey (atom {}))))
-           mkey)
+               (assoc mkeys mkey (atom {})))))
     (get @mkeys mkey)))
 
 (defn create-flusher
@@ -29,7 +28,7 @@
  (fn []
    (doseq [path @pkeys]
      (fn-store tenant period rollup time path (fn-agg (fn-data path)) ttl)
-     (swap! tkeys (fn [tkeys time] (dissoc tkeys time)) time)
+     (swap! tkeys (fn [tkeys] (dissoc tkeys time)))
      (when (empty? tkeys)
        (swap! mkeys (fn [mkeys mkey] (dissoc mkeys mkey))
               (construct-mkey tenant period rollup))))))
@@ -52,9 +51,8 @@
                                            rollup time ttl fn-data fn-agg
                                            fn-store)]
                (swap! pkeys
-                      (fn [pkeys flusher]
-                        (with-meta pkeys {:flusher flusher}))
-                      flusher)
+                      (fn [pkeys]
+                        (with-meta pkeys {:flusher flusher})))
                (assoc! tkeys time pkeys)
                (run-delayer! rollup flusher))))
          time)
