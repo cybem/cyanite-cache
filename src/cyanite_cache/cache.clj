@@ -64,7 +64,7 @@
 (defn set-pkeys!
   [mkeys tkeys tenant period rollup time ttl fn-get fn-agg fn-store]
   (swap! tkeys
-         (fn [tkeys time]
+         (fn [tkeys]
            (if (contains? tkeys time)
              tkeys
              (let [pkeys (atom [])
@@ -75,8 +75,7 @@
                (swap! pkeys
                       (fn [pkeys]
                         (with-meta pkeys {:flusher flusher :delayer delayer})))
-               (assoc! tkeys time pkeys))))
-         time)
+               (assoc tkeys time pkeys)))))
   (get @tkeys time))
 
 (defn set-keys!
