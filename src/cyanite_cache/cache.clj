@@ -46,9 +46,11 @@
    (doseq [path @pkeys]
      (fn-store tenant period rollup time path (fn-agg (fn-get path)) ttl)
      (swap! tkeys (fn [tkeys] (dissoc tkeys time)))
-     (when (empty? tkeys)
-       (swap! mkeys (fn [mkeys mkey] (dissoc mkeys mkey))
-              (construct-mkey tenant period rollup))))))
+     (let [mkey (construct-mkey tenant period rollup)]
+       (swap! mkeys (fn [mkeys]
+                      (when (empty? tkeys)
+                        (dissoc mkeys mkey)
+                        mkeys)))))))
 
 (defn run-delayer!
   [rollup flusher]
@@ -119,6 +121,7 @@
     (reify
       StoreCache
       (push! [this tenant period rollup time path data ttl]
-        (set-keys! mkeys tenant period rollup time path ttl (get-get-fn rollup) fn-agg fn-store)
+        (set-keys! mkeys tenant period rollup time path ttl (get-get-fn rollup)
+                   fn-agg fn-store)
         )
       )))
