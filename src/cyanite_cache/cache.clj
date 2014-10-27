@@ -3,12 +3,16 @@
   (:require [clojure.string :as str]
             [clojure.core.cache :as cache]))
 
-(def ^:const metric-wait-time 60)
-(def ^:const cache-add-ttl 180)
-
 (defprotocol StoreCache
   (push! [this tenant period rollup time path data ttl])
   (flush! [this]))
+
+(def ^:const metric-wait-time 60)
+(def ^:const cache-add-ttl 180)
+
+(defn agg-avg
+  [data]
+  (/ (reduce + data) (count data)))
 
 (defn construct-mkey
   [tenant period rollup]
@@ -78,10 +82,6 @@
     (when-not exists
       (swap! pkeys conj path))
     exists))
-
-(defn agg-avg
-  [data]
-  (/ (reduce + data) (count data)))
 
 (defn simple-cache
   [fn-agg fn-store]
