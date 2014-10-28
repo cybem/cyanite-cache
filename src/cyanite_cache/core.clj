@@ -16,13 +16,17 @@
 (defn -main
   "Main function."
   [& args]
-  (let [scache (cache/simple-cache store)]
-    (time (cache/put! scache "tenant" 123 60 117293 "my.metric" 10.0 600))
-    (inspect scache)
-    (time (cache/put! scache "tenant" 123 60 117293 "my.metric" 20.0 600))
-    (inspect scache)
-    (time (cache/put! scache "tenant" 123 60 117293 "my.metric" 30.0 600))
-    (inspect scache)
-    (Thread/sleep (* 10 1000))
-    (inspect scache))
+  (let [scache (cache/simple-cache store)
+        num-inserts 1000
+        num-metrics 10000]
+    (time
+     (doall (doseq [_ (range num-inserts)]
+              (cache/put! scache "tenant" 123 60 117293
+                          (format "my.metric%s" (rand-int num-metrics))
+                          (rand 100) 600))))
+    (println (format "%s values is in the cache" num-inserts))
+    (cache/flush! scache)
+    (Thread/sleep (* 190 1000))
+    ;;(inspect scache)
+    )
   (System/exit 0))

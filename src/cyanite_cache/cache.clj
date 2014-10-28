@@ -48,7 +48,9 @@
   (let [delayer (future
                   (Thread/sleep (to-ms (calc-delay rollup (rand-int 59)))))]
     (future
-      (deref delayer)
+      (try
+        (deref delayer)
+        (catch Exception _))
       (flusher))
     delayer))
 
@@ -59,7 +61,7 @@
            (fn [at-mkeys]
              (if (contains? at-mkeys mkey)
                at-mkeys
-               (let [pkeys (atom [])
+               (let [pkeys (atom #{})
                      flusher (create-flusher mkeys mkey pkeys tenant period
                                              rollup time ttl fn-get fn-agg
                                              fn-store)
@@ -76,7 +78,7 @@
                           fn-agg fn-store)]
     (swap! pkeys
            (fn [pkeys]
-             (if (some #(= path %) pkeys)
+             (if (contains? pkeys path)
                pkeys
                (conj pkeys path))))))
 
@@ -118,8 +120,13 @@
                      (get-get-fn! rollup) fn-agg fn-store)
           (swap! (get-cache! rollup)
                  (fn [cache]
-                   (assoc cache ckey (conj (get cache ckey) data))))))
-      (flush! [this])
+                   (assoc cache ckey (conj (cache/lookup cache ckey) data))))))
+      (flush! [this]
+        (doseq [[mkey pkeys] @mkeys]
+          (let [delayer (get (meta @pkeys) :delayer nil)]
+            (when delayer
+              (println delayer)
+              (future-cancel delayer)))))
       (-show-keys [this] (println "MKeys:" mkeys))
       (-show-cache [this] (println "Caches:" caches))
       (-show-meta
