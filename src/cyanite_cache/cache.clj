@@ -84,7 +84,8 @@
 
 (defn simple-cache
   [fn-store & {:keys [fn-agg] :or {fn-agg agg-avg}}]
-  (let [caches (atom {})
+  (let [dcache (atom {})
+        caches (atom {})
         get-fns (atom {})
         mkeys (atom {})
         get-cache!
@@ -118,14 +119,28 @@
         (let [ckey (construct-key tenant period rollup time path)]
           (set-keys! mkeys tenant period rollup time path ttl
                      (get-get-fn! rollup) fn-agg fn-store)
-          (swap! (get-cache! rollup)
-                 (fn [cache]
-                   (assoc cache ckey (conj (cache/lookup cache ckey) data))))))
+
+          ;;(conj (get @(get-cache! rollup) ckey) data)
+          ;;(conj (cache/lookup @(get-cache! rollup) ckey) data)
+
+          ;;(swap! (get-cache! rollup)
+          ;;       #(cache/miss % ckey (conj (get % ckey) data)))
+
+          (swap! dcache #(assoc % ckey (conj (get % ckey) data)))
+
+
+          ;;(swap! (get-cache! rollup)
+          ;;       (fn [mcache] cache/miss mcache ckey data))
+
+          ;; (swap! (get-cache! rollup)
+          ;;        (fn [cache]
+          ;;          (assoc cache ckey (conj (cache/lookup cache ckey) data))))
+
+))
       (flush! [this]
         (doseq [[mkey pkeys] @mkeys]
           (let [delayer (get (meta @pkeys) :delayer nil)]
             (when delayer
-              (println delayer)
               (future-cancel delayer)))))
       (-show-keys [this] (println "MKeys:" mkeys))
       (-show-cache [this] (println "Caches:" caches))
