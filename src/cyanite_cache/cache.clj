@@ -90,7 +90,7 @@
                (conj pkeys path))))))
 
 (defn simple-cache
-  [fn-agg fn-store]
+  [fn-store & {:keys [fn-agg] :or {fn-agg agg-avg}}]
   (let [caches (atom {})
         get-fns (atom {})
         mkeys (atom {})
