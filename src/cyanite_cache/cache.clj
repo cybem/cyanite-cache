@@ -107,8 +107,6 @@
         create-fn-get
         (fn [cache]
           (fn [key]
-            (println "CACHE" cache)
-            (println key)
             (cache/lookup @cache key)))
         get-get-fn!
         (fn [rollup]
