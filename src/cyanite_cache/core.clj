@@ -14,6 +14,11 @@
     (cache/-show-cache scache)
     (time (cache/put! scache "tenant" 123 60 117293 "my.metric" 20.0 600))
     (cache/-show-keys scache)
+    (cache/-show-cache scache)
+
+    (time (cache/put! scache "tenant" 123 60 117293 "my.metric" 30.0 600))
+    (cache/-show-keys scache)
     (cache/-show-cache scache))
+
   (Thread/sleep (* 190 1000))
   (System/exit 0))
