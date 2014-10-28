@@ -16,13 +16,13 @@
   [data]
   (/ (reduce + data) (count data)))
 
+(defn construct-mkey
+  [tenant period rollup time]
+  (str/join "-" [tenant period rollup time]))
+
 (defn construct-key
   [tenant period rollup time path]
-  (str/join "-" [tenant period rollup time path]))
-
-(defn construct-mkey
-  [tenant period rollup]
-  (str/join "-" [tenant period rollup]))
+  (str/join "-" [(construct-mkey tenant period rollup time) path]))
 
 (defn calc-delay
   [rollup add]
@@ -32,27 +32,12 @@
   [sec]
   (* sec 1000))
 
-(defn set-tkeys!
-  [mkeys tenant period rollup]
-  (let [mkey (construct-mkey tenant period rollup)]
-    (swap! mkeys
-           (fn [mkeys]
-             (if (contains? mkeys mkey)
-               mkeys
-               (assoc mkeys mkey (atom {})))))
-    (get @mkeys mkey)))
-
 (defn create-flusher
- [mkeys tkeys pkeys tenant period rollup time ttl fn-get fn-agg fn-store]
+ [mkeys mkey pkeys tenant period rollup time ttl fn-get fn-agg fn-store]
  (fn []
    (doseq [path @pkeys]
      (fn-store tenant period rollup time path (fn-agg (fn-get path)) ttl)
-     (swap! tkeys (fn [tkeys] (dissoc tkeys time)))
-     (let [mkey (construct-mkey tenant period rollup)]
-       (swap! mkeys (fn [mkeys]
-                      (when (empty? tkeys)
-                        (dissoc mkeys mkey)
-                        mkeys)))))))
+     (swap! mkeys (fn [mkeys] (dissoc mkeys mkey))))))
 
 (defn run-delayer!
   [rollup flusher]
@@ -64,26 +49,26 @@
     delayer))
 
 (defn set-pkeys!
-  [mkeys tkeys tenant period rollup time ttl fn-get fn-agg fn-store]
-  (swap! tkeys
-         (fn [tkeys]
-           (if (contains? tkeys time)
-             tkeys
-             (let [pkeys (atom [])
-                   flusher (create-flusher mkeys tkeys pkeys tenant period
-                                           rollup time ttl fn-get fn-agg
-                                           fn-store)
-                   delayer (run-delayer! rollup flusher)]
-               (swap! pkeys
-                      (fn [pkeys]
-                        (with-meta pkeys {:flusher flusher :delayer delayer})))
-               (assoc tkeys time pkeys)))))
-  (get @tkeys time))
+  [mkeys tenant period rollup time ttl fn-get fn-agg fn-store]
+  (let [mkey (construct-mkey tenant period rollup time)]
+    (swap! mkeys
+           (fn [mkeys]
+             (if (contains? mkeys mkey)
+               mkeys
+               (let [pkeys (atom [])
+                     flusher (create-flusher mkeys mkey pkeys tenant period
+                                             rollup time ttl fn-get fn-agg
+                                             fn-store)
+                     delayer (run-delayer! rollup flusher)]
+                 (swap! pkeys
+                        (fn [pkeys]
+                          (with-meta pkeys {:flusher flusher :delayer delayer})))
+                 (assoc mkeys mkey pkeys)))))
+    (get @mkeys mkey)))
 
 (defn set-keys!
   [mkeys tenant period rollup time path ttl fn-get fn-agg fn-store]
-  (let [tkeys (set-tkeys! mkeys tenant period rollup)
-        pkeys (set-pkeys! mkeys tkeys tenant period rollup time ttl fn-get
+  (let [pkeys (set-pkeys! mkeys tenant period rollup time ttl fn-get
                           fn-agg fn-store)]
     (swap! pkeys
            (fn [pkeys]
@@ -129,13 +114,7 @@
                    fn-agg fn-store)
         (swap! (get-cache! rollup)
                (fn [cache]
-                 (assoc cache key (conj (get cache key) data))))
-
-        (println (get-cache! rollup)))
+                 (assoc cache key (conj (get cache key) data)))))
       (flush! [this])
-      (-show-keys [this]
-        (println mkeys))
-      (-show-cache [this]
-        (println caches))
-
-)))
+      (-show-keys [this] (println mkeys))
+      (-show-cache [this] (println caches)))))
