@@ -7,7 +7,8 @@
   (put! [this tenant period rollup time path data ttl])
   (flush! [this])
   (-show-keys [this])
-  (-show-cache [this]))
+  (-show-cache [this])
+  (-show-meta [this]))
 
 (def ^:const metric-wait-time 60)
 (def ^:const cache-add-ttl 180)
@@ -21,8 +22,10 @@
   (str/join "-" [tenant period rollup time]))
 
 (defn construct-key
-  [tenant period rollup time path]
-  (str/join "-" [(construct-mkey tenant period rollup time) path]))
+  ([tenant period rollup time path]
+     (str/join "-" [(construct-mkey tenant period rollup time) path]))
+  ([mkey path]
+     (str/join "-" [mkey path])))
 
 (defn calc-delay
   [rollup add]
@@ -35,14 +38,22 @@
 (defn create-flusher
  [mkeys mkey pkeys tenant period rollup time ttl fn-get fn-agg fn-store]
  (fn []
+   (println "FLUSHER!!!!!!!")
    (doseq [path @pkeys]
-     (fn-store tenant period rollup time path (fn-agg (fn-get path)) ttl)
-     (swap! mkeys (fn [mkeys] (dissoc mkeys mkey))))))
+     (fn-store tenant period rollup time path
+               (fn-agg (fn-get (construct-key mkey path))) ttl))
+   ;;(swap! mkeys (fn [mkeys] (dissoc mkeys mkey)))
+   (println "FLUSHER ENDS!!!")
+   (newline)
+   ))
 
 (defn run-delayer!
   [rollup flusher]
-  (let [delayer (future
-                  (Thread/sleep (to-ms (calc-delay rollup (rand-int 59)))))]
+  (let [
+        ;;delayer (future
+        ;;          (Thread/sleep (to-ms (calc-delay rollup (rand-int 59)))))
+        delayer (future (Thread/sleep 3000))
+        ]
     (future
       (deref delayer)
       (flusher))
@@ -96,16 +107,17 @@
         create-fn-get
         (fn [cache]
           (fn [key]
-            (get cache key)))
+            (println "CACHE" cache)
+            (println key)
+            (cache/lookup @cache key)))
         get-get-fn!
         (fn [rollup]
-          (let [rollup (int rollup)]
-            (swap! get-fns
-                   (fn [get-fns]
-                     (if (contains? get-fns rollup)
-                       get-fns
-                       (assoc get-fns rollup
-                              (create-fn-get @(get-cache! rollup)))))))
+          (swap! get-fns
+                 (fn [get-fns]
+                   (if (contains? get-fns rollup)
+                     get-fns
+                     (assoc get-fns rollup
+                            (create-fn-get (get-cache! rollup))))))
           (get @get-fns rollup))]
     (reify
       StoreCache
@@ -117,5 +129,9 @@
                  (fn [cache]
                    (assoc cache ckey (conj (get cache ckey) data))))))
       (flush! [this])
-      (-show-keys [this] (println mkeys))
-      (-show-cache [this] (println caches)))))
+      (-show-keys [this] (println "MKeys:" mkeys))
+      (-show-cache [this] (println "Caches:" caches))
+      (-show-meta
+        [this]
+        (doseq [[mkey pkeys] @mkeys]
+          (println "Meta:" mkey (meta @pkeys)))))))
