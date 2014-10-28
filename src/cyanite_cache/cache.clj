@@ -5,7 +5,9 @@
 
 (defprotocol StoreCache
   (put! [this tenant period rollup time path data ttl])
-  (flush! [this]))
+  (flush! [this])
+  (-show-keys [this])
+  (-show-cache [this]))
 
 (def ^:const metric-wait-time 60)
 (def ^:const cache-add-ttl 180)
@@ -85,7 +87,7 @@
                           fn-agg fn-store)]
     (swap! pkeys
            (fn [pkeys]
-             (if (contains? pkeys path)
+             (if (some #(= path %) pkeys)
                pkeys
                (conj pkeys path))))))
 
@@ -127,5 +129,13 @@
                    fn-agg fn-store)
         (swap! (get-cache! rollup)
                (fn [cache]
-                 (assoc cache key (conj (get cache key) data)))))
-      (flush! [this]))))
+                 (assoc cache key (conj (get cache key) data))))
+
+        (println (get-cache! rollup)))
+      (flush! [this])
+      (-show-keys [this]
+        (println mkeys))
+      (-show-cache [this]
+        (println caches))
+
+)))
