@@ -57,7 +57,7 @@
 (defn run-delayer!
   [rollup flusher]
   (let [delayer (future
-                  (Thread/sleep (* (calc-delay rollup (rand-int 59)) 1000)))]
+                  (Thread/sleep (to-ms (calc-delay rollup (rand-int 59)))))]
     (future
       (deref delayer)
       (flusher))
