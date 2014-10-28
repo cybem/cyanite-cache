@@ -1,7 +1,6 @@
 (ns cyanite-cache.cache
   "Caching facility for Cyanite"
-  (:require [clojure.string :as str]
-            [clojure.core.cache :as cache]))
+  (:require [clojure.string :as str]))
 
 (defprotocol StoreCache
   (put! [this tenant period rollup time path data ttl])
@@ -40,7 +39,7 @@
   (fn []
     (doseq [path @pkeys]
       (fn-store tenant period rollup time path
-                (fn-agg (fn-get (construct-key mkey path))) ttl))
+                (fn-agg (fn-get (construct-key mkey path) @pkeys)) ttl))
     (swap! mkeys (fn [mkeys] (dissoc mkeys mkey)))))
 
 (defn run-delayer!
@@ -68,7 +67,8 @@
                      delayer (run-delayer! rollup flusher)]
                  (swap! pkeys
                         (fn [pkeys]
-                          (with-meta pkeys {:flusher flusher :delayer delayer})))
+                          (with-meta pkeys {:flusher flusher :delayer delayer
+                                            :data (atom {})})))
                  (assoc at-mkeys mkey pkeys)))))
     (get @mkeys mkey)))
 
@@ -80,71 +80,33 @@
            (fn [pkeys]
              (if (contains? pkeys path)
                pkeys
-               (conj pkeys path))))))
+               (conj pkeys path))))
+    pkeys))
 
 (defn simple-cache
   [fn-store & {:keys [fn-agg] :or {fn-agg agg-avg}}]
-  (let [dcache (atom {})
-        caches (atom {})
-        get-fns (atom {})
-        mkeys (atom {})
-        get-cache!
-        (fn [rollup]
-          (swap! caches
-                 (fn [caches]
-                   (if (contains? caches rollup)
-                     caches
-                     (let [cache-ttl (to-ms (calc-delay rollup
-                                                        cache-add-ttl))]
-                       (assoc caches rollup
-                              (atom (cache/ttl-cache-factory
-                                     {} :ttl cache-ttl)))))))
-          (get @caches rollup))
-        create-fn-get
-        (fn [cache]
-          (fn [key]
-            (cache/lookup @cache key)))
-        get-get-fn!
-        (fn [rollup]
-          (swap! get-fns
-                 (fn [get-fns]
-                   (if (contains? get-fns rollup)
-                     get-fns
-                     (assoc get-fns rollup
-                            (create-fn-get (get-cache! rollup))))))
-          (get @get-fns rollup))]
+  (let [mkeys (atom {})
+        get-data (fn [pkeys] (get (meta pkeys) :data))
+        fn-get (fn [key pkeys] (get @(get-data pkeys) key))]
     (reify
       StoreCache
       (put! [this tenant period rollup time path data ttl]
-        (let [ckey (construct-key tenant period rollup time path)]
-          (set-keys! mkeys tenant period rollup time path ttl
-                     (get-get-fn! rollup) fn-agg fn-store)
-
-          ;;(conj (get @(get-cache! rollup) ckey) data)
-          ;;(conj (cache/lookup @(get-cache! rollup) ckey) data)
-
-          ;;(swap! (get-cache! rollup)
-          ;;       #(cache/miss % ckey (conj (get % ckey) data)))
-
-          (swap! dcache #(assoc % ckey (conj (get % ckey) data)))
-
-
-          ;;(swap! (get-cache! rollup)
-          ;;       (fn [mcache] cache/miss mcache ckey data))
-
-          ;; (swap! (get-cache! rollup)
-          ;;        (fn [cache]
-          ;;          (assoc cache ckey (conj (cache/lookup cache ckey) data))))
-
-))
+        (let [ckey (construct-key tenant period rollup time path)
+              pkeys (set-keys! mkeys tenant period rollup time path ttl fn-get
+                               fn-agg fn-store)
+              adata (get-data @pkeys)]
+          (swap! adata (fn [at-data]
+                         (assoc at-data ckey (conj (get at-data ckey) data))))))
       (flush! [this]
         (doseq [[mkey pkeys] @mkeys]
           (let [delayer (get (meta @pkeys) :delayer nil)]
             (when delayer
               (future-cancel delayer)))))
       (-show-keys [this] (println "MKeys:" mkeys))
-      (-show-cache [this] (println "Caches:" caches))
-      (-show-meta
-        [this]
+      (-show-cache [this]
+        (println "Cache:")
+        (doseq [[mkey pkeys] @mkeys]
+          (println (get-data @pkeys))))
+      (-show-meta [this]
         (doseq [[mkey pkeys] @mkeys]
           (println "Meta:" mkey (meta @pkeys)))))))
