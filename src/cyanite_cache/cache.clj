@@ -36,24 +36,17 @@
   (* sec 1000))
 
 (defn create-flusher
- [mkeys mkey pkeys tenant period rollup time ttl fn-get fn-agg fn-store]
- (fn []
-   (println "FLUSHER!!!!!!!")
-   (doseq [path @pkeys]
-     (fn-store tenant period rollup time path
-               (fn-agg (fn-get (construct-key mkey path))) ttl))
-   ;;(swap! mkeys (fn [mkeys] (dissoc mkeys mkey)))
-   (println "FLUSHER ENDS!!!")
-   (newline)
-   ))
+  [mkeys mkey pkeys tenant period rollup time ttl fn-get fn-agg fn-store]
+  (fn []
+    (doseq [path @pkeys]
+      (fn-store tenant period rollup time path
+                (fn-agg (fn-get (construct-key mkey path))) ttl))
+    (swap! mkeys (fn [mkeys] (dissoc mkeys mkey)))))
 
 (defn run-delayer!
   [rollup flusher]
-  (let [
-        ;;delayer (future
-        ;;          (Thread/sleep (to-ms (calc-delay rollup (rand-int 59)))))
-        delayer (future (Thread/sleep 3000))
-        ]
+  (let [delayer (future
+                  (Thread/sleep (to-ms (calc-delay rollup (rand-int 59)))))]
     (future
       (deref delayer)
       (flusher))
@@ -63,9 +56,9 @@
   [mkeys tenant period rollup time ttl fn-get fn-agg fn-store]
   (let [mkey (construct-mkey tenant period rollup time)]
     (swap! mkeys
-           (fn [mkeys]
-             (if (contains? mkeys mkey)
-               mkeys
+           (fn [at-mkeys]
+             (if (contains? at-mkeys mkey)
+               at-mkeys
                (let [pkeys (atom [])
                      flusher (create-flusher mkeys mkey pkeys tenant period
                                              rollup time ttl fn-get fn-agg
@@ -74,7 +67,7 @@
                  (swap! pkeys
                         (fn [pkeys]
                           (with-meta pkeys {:flusher flusher :delayer delayer})))
-                 (assoc mkeys mkey pkeys)))))
+                 (assoc at-mkeys mkey pkeys)))))
     (get @mkeys mkey)))
 
 (defn set-keys!
