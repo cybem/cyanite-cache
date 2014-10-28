@@ -110,11 +110,12 @@
     (reify
       StoreCache
       (put! [this tenant period rollup time path data ttl]
-        (set-keys! mkeys tenant period rollup time path ttl (get-get-fn! rollup)
-                   fn-agg fn-store)
-        (swap! (get-cache! rollup)
-               (fn [cache]
-                 (assoc cache key (conj (get cache key) data)))))
+        (let [ckey (construct-key tenant period rollup time path)]
+          (set-keys! mkeys tenant period rollup time path ttl
+                     (get-get-fn! rollup) fn-agg fn-store)
+          (swap! (get-cache! rollup)
+                 (fn [cache]
+                   (assoc cache ckey (conj (get cache ckey) data))))))
       (flush! [this])
       (-show-keys [this] (println mkeys))
       (-show-cache [this] (println caches)))))
