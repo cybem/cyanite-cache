@@ -20,8 +20,8 @@
   "Main function."
   [& args]
   (let [scache (cache/simple-cache store)
-        num-inserts 15000000
-        num-metrics 1000000]
+        num-inserts 1500000
+        num-metrics 100000]
     (time
      (doall (doseq [_ (range num-inserts)]
               (cache/put! scache "tenant" 123 60 117293

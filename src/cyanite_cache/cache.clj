@@ -82,6 +82,17 @@
     (swap! pkeys #(if (contains? % path) % (conj % path)))
     pkeys))
 
+(defn run-flusher!
+  [mkeys]
+  (doseq [[mkey pkeys] @mkeys]
+    (let [m (meta @pkeys)
+          delayer (get m :delayer nil)
+          flusher (get m :flusher nil)]
+      (when delayer
+        (future-cancel delayer)
+        (when flusher
+          (deref flusher))))))
+
 (defn simple-cache
   [fn-store & {:keys [fn-agg] :or {fn-agg agg-avg}}]
   (let [mkeys (atom {})
@@ -97,14 +108,7 @@
               adata (get-data @pkeys)]
           (swap! adata #(assoc % ckey (conj (get % ckey) data)))))
       (flush! [this]
-        (doseq [[mkey pkeys] @mkeys]
-          (let [m (meta @pkeys)
-                delayer (get m :delayer nil)
-                flusher (get m :flusher nil)]
-            (when delayer
-              (future-cancel delayer)
-              (when flusher
-                (deref flusher))))))
+        (run-flusher! mkeys))
       (-show-keys [this] (println "MKeys:" mkeys))
       (-show-cache [this]
         (println "Cache:")
