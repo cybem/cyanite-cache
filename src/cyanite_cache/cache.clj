@@ -45,15 +45,15 @@
     (swap! mkeys #(dissoc % mkey))))
 
 (defn run-delayer!
-  [rollup flusher]
+  [rollup fn-flusher]
   (let [delayer (future
-                  (Thread/sleep (to-ms (calc-delay rollup (rand-int 59)))))]
-    (future
-      (try
-        (deref delayer)
-        (catch Exception _))
-      (flusher))
-    delayer))
+                  (Thread/sleep (to-ms (calc-delay rollup (rand-int 59)))))
+        flusher (future
+                  (try
+                    (deref delayer)
+                    (catch Exception _))
+                  (fn-flusher))]
+    [delayer flusher]))
 
 (defn set-pkeys!
   [mkeys tenant period rollup time ttl fn-get fn-agg fn-store fn-key]
@@ -62,13 +62,15 @@
            #(if (contains? % mkey)
               %
               (let [pkeys (atom #{})
-                    flusher (create-flusher mkeys mkey pkeys tenant period
-                                            rollup time ttl fn-get fn-agg
-                                            fn-store fn-key)
-                    delayer (run-delayer! rollup flusher)]
+                    fn-flusher (create-flusher mkeys mkey pkeys tenant period
+                                               rollup time ttl fn-get fn-agg
+                                               fn-store fn-key)
+                    [delayer flusher] (run-delayer! rollup fn-flusher)]
                 (swap! pkeys
                        (fn [pkeys]
-                         (with-meta pkeys {:flusher flusher :delayer delayer
+                         (with-meta pkeys {:fn-flusher fn-flusher
+                                           :delayer delayer
+                                           :flusher flusher
                                            :data (atom {})})))
                 (assoc % mkey pkeys))))
     (get @mkeys mkey)))
@@ -96,9 +98,13 @@
           (swap! adata #(assoc % ckey (conj (get % ckey) data)))))
       (flush! [this]
         (doseq [[mkey pkeys] @mkeys]
-          (let [delayer (get (meta @pkeys) :delayer nil)]
+          (let [m (meta @pkeys)
+                delayer (get m :delayer nil)
+                flusher (get m :flusher nil)]
             (when delayer
-              (future-cancel delayer)))))
+              (future-cancel delayer)
+              (when flusher
+                (deref flusher))))))
       (-show-keys [this] (println "MKeys:" mkeys))
       (-show-cache [this]
         (println "Cache:")

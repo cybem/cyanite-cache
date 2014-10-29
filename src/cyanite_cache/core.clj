@@ -20,8 +20,8 @@
   "Main function."
   [& args]
   (let [scache (cache/simple-cache store)
-        num-inserts 1000000
-        num-metrics 10000]
+        num-inserts 15000000
+        num-metrics 1000000]
     (time
      (doall (doseq [_ (range num-inserts)]
               (cache/put! scache "tenant" 123 60 117293
@@ -29,11 +29,8 @@
                           (rand 100) 600))))
     (println (format "%s values are in the cache" num-inserts))
     ;;(inspect scache)
-    (Thread/sleep (* 10 1000))
     (cache/flush! scache)
-    (Thread/sleep (* 10 1000))
     (println "Store count:" @store-count)
-    ;;(Thread/sleep (* 190 1000))
     ;;(inspect scache)
     )
   (System/exit 0))
