@@ -35,11 +35,13 @@
   (* sec 1000))
 
 (defn create-flusher
-  [mkeys mkey pkeys tenant period rollup time ttl fn-get fn-agg fn-store]
+  [mkeys mkey pkeys tenant period rollup time ttl fn-get fn-agg fn-store fn-key]
   (fn []
     (doseq [path @pkeys]
       (fn-store tenant period rollup time path
-                (fn-agg (fn-get (construct-key mkey path) @pkeys)) ttl))
+                (fn-agg (fn-get
+                         (fn-key tenant period rollup time path)
+                         @pkeys)) ttl))
     (swap! mkeys #(dissoc % mkey))))
 
 (defn run-delayer!
@@ -54,7 +56,7 @@
     delayer))
 
 (defn set-pkeys!
-  [mkeys tenant period rollup time ttl fn-get fn-agg fn-store]
+  [mkeys tenant period rollup time ttl fn-get fn-agg fn-store fn-key]
   (let [mkey (construct-mkey tenant period rollup time)]
     (swap! mkeys
            #(if (contains? % mkey)
@@ -62,7 +64,7 @@
               (let [pkeys (atom #{})
                     flusher (create-flusher mkeys mkey pkeys tenant period
                                             rollup time ttl fn-get fn-agg
-                                            fn-store)
+                                            fn-store fn-key)
                     delayer (run-delayer! rollup flusher)]
                 (swap! pkeys
                        (fn [pkeys]
@@ -72,9 +74,9 @@
     (get @mkeys mkey)))
 
 (defn set-keys!
-  [mkeys tenant period rollup time path ttl fn-get fn-agg fn-store]
+  [mkeys tenant period rollup time path ttl fn-get fn-agg fn-store fn-key]
   (let [pkeys (set-pkeys! mkeys tenant period rollup time ttl fn-get
-                          fn-agg fn-store)]
+                          fn-agg fn-store fn-key)]
     (swap! pkeys #(if (contains? % path) % (conj % path)))
     pkeys))
 
@@ -82,13 +84,14 @@
   [fn-store & {:keys [fn-agg] :or {fn-agg agg-avg}}]
   (let [mkeys (atom {})
         get-data (fn [pkeys] (get (meta pkeys) :data))
-        fn-get (fn [key pkeys] (get @(get-data pkeys) key))]
+        cache-get (fn [key pkeys] (get @(get-data pkeys) key))
+        cache-key (fn [tenant period rollup time path] (hash path))]
     (reify
       StoreCache
       (put! [this tenant period rollup time path data ttl]
-        (let [ckey (construct-key tenant period rollup time path)
-              pkeys (set-keys! mkeys tenant period rollup time path ttl fn-get
-                               fn-agg fn-store)
+        (let [ckey (cache-key tenant period rollup time path)
+              pkeys (set-keys! mkeys tenant period rollup time path ttl
+                               cache-get fn-agg fn-store cache-key)
               adata (get-data @pkeys)]
           (swap! adata #(assoc % ckey (conj (get % ckey) data)))))
       (flush! [this]

@@ -27,7 +27,7 @@
               (cache/put! scache "tenant" 123 60 117293
                           (format "my.metric%s" (rand-int num-metrics))
                           (rand 100) 600))))
-    (println (format "%s values is in the cache" num-inserts))
+    (println (format "%s values are in the cache" num-inserts))
     ;;(inspect scache)
     (Thread/sleep (* 10 1000))
     (cache/flush! scache)
