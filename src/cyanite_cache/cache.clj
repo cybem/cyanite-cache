@@ -40,7 +40,7 @@
     (doseq [path @pkeys]
       (fn-store tenant period rollup time path
                 (fn-agg (fn-get (construct-key mkey path) @pkeys)) ttl))
-    (swap! mkeys (fn [mkeys] (dissoc mkeys mkey)))))
+    (swap! mkeys #(dissoc % mkey))))
 
 (defn run-delayer!
   [rollup flusher]
@@ -57,30 +57,25 @@
   [mkeys tenant period rollup time ttl fn-get fn-agg fn-store]
   (let [mkey (construct-mkey tenant period rollup time)]
     (swap! mkeys
-           (fn [at-mkeys]
-             (if (contains? at-mkeys mkey)
-               at-mkeys
-               (let [pkeys (atom #{})
-                     flusher (create-flusher mkeys mkey pkeys tenant period
-                                             rollup time ttl fn-get fn-agg
-                                             fn-store)
-                     delayer (run-delayer! rollup flusher)]
-                 (swap! pkeys
-                        (fn [pkeys]
-                          (with-meta pkeys {:flusher flusher :delayer delayer
-                                            :data (atom {})})))
-                 (assoc at-mkeys mkey pkeys)))))
+           #(if (contains? % mkey)
+              %
+              (let [pkeys (atom #{})
+                    flusher (create-flusher mkeys mkey pkeys tenant period
+                                            rollup time ttl fn-get fn-agg
+                                            fn-store)
+                    delayer (run-delayer! rollup flusher)]
+                (swap! pkeys
+                       (fn [pkeys]
+                         (with-meta pkeys {:flusher flusher :delayer delayer
+                                           :data (atom {})})))
+                (assoc % mkey pkeys))))
     (get @mkeys mkey)))
 
 (defn set-keys!
   [mkeys tenant period rollup time path ttl fn-get fn-agg fn-store]
   (let [pkeys (set-pkeys! mkeys tenant period rollup time ttl fn-get
                           fn-agg fn-store)]
-    (swap! pkeys
-           (fn [pkeys]
-             (if (contains? pkeys path)
-               pkeys
-               (conj pkeys path))))
+    (swap! pkeys #(if (contains? % path) % (conj % path)))
     pkeys))
 
 (defn simple-cache
@@ -95,8 +90,7 @@
               pkeys (set-keys! mkeys tenant period rollup time path ttl fn-get
                                fn-agg fn-store)
               adata (get-data @pkeys)]
-          (swap! adata (fn [at-data]
-                         (assoc at-data ckey (conj (get at-data ckey) data))))))
+          (swap! adata #(assoc % ckey (conj (get % ckey) data)))))
       (flush! [this]
         (doseq [[mkey pkeys] @mkeys]
           (let [delayer (get (meta @pkeys) :delayer nil)]
